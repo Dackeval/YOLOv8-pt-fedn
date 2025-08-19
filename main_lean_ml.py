@@ -50,7 +50,7 @@ def main():
 
     #client_names = ['/home/niklas/fedn-ultralytics-tutorial/datasets/dataset_FHL',
     #'/home/niklas/fedn-ultralytics-tutorial/datasets/dataset_Airfield']
-
+    
     dataset_path = params['dataset_path']
     client_names = [os.path.join(dataset_path,'dataset_Airfield')]#,
 #                  os.path.join(dataset_path,'dataset_FHL')]

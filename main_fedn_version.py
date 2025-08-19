@@ -6,6 +6,8 @@ import numpy as np
 import yaml
 from fedn.network.clients.fedn_client import ConnectToApiResult, FednClient
 from fedn.utils.helpers.helpers import save_metadata
+import time
+import allure
 
 from trainer import Trainer
 from fedn_util import extract_weights_from_model, load_weights_into_model
@@ -16,12 +18,18 @@ from fedn_util import extract_weights_from_model, load_weights_into_model
 with open(os.path.join("utils", "args.yaml"), errors="ignore") as f:
     params = yaml.safe_load(f)
 
+@allure.feature("Model Training")
+@allure.story("FL Training")
 class FEDnWrapper:
 
     def __init__(self,trainer):
         self.trainer = trainer
 
+    @allure.step("Training the model")
     def train(self, weights, client_settings):
+        
+        # start train timer
+        train_start = time.perf_counter()
 
         old_weights =  [val.cpu().numpy() for _, val in self.trainer.model.state_dict().items()]
 
@@ -52,9 +60,33 @@ class FEDnWrapper:
         upd_weights =  [val.cpu().numpy() for _, val in self.trainer.model.state_dict().items()]
         print("new state: ",  np.sum([np.linalg.norm(a) for a in upd_weights]))
 
+        # train time elaspsed
+        elapsed_time = time.perf_counter() - train_start
+        print(f"Training took {elapsed_time:.2f} seconds")
+        # size of the model and metadata
+        train_communication_size = os.path.getsize(out_model) + os.path.getsize(training_metadata)
+        print(f"Communication size for training: {train_communication_size} bytes")
+        # attach the size of the model and metadata to allure report
+        allure.attach(
+            f"{train_communication_size} bytes",
+            name="Training communication size",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        # attach the timing information to allure report
+        allure.attach(
+            f"Training took {elapsed_time:.2f} seconds",
+            name="Training time",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        
+
         return out_model, training_metadata
     
+    @allure.step("Validating the model")
     def validate(self,  weights):
+        
+        # start validation timer
+        train_start = time.perf_counter()
 
         old_weights =  [val.cpu().numpy() for _, val in self.trainer.model.state_dict().items()]
         load_weights_into_model(weights, self.trainer.model)
@@ -73,6 +105,36 @@ class FEDnWrapper:
         }
         upd_weights =  [val.cpu().numpy() for _, val in self.trainer.model.state_dict().items()]
         print("new state: ",  np.sum([np.linalg.norm(a) for a in upd_weights]))
+
+        # elapsed time validation
+        elapsed_time = time.perf_counter() - train_start
+        print(f"Training took {elapsed_time:.2f} seconds")
+
+        # round time 
+        validation_complete = time.time()
+
+        validation_metrics_size = os.path.getsize(performance)
+        print(f"Communication size for validation: {validation_metrics_size} bytes")
+
+        allure.attach(
+            f"{validation_metrics_size} bytes",
+            name="Validation metrics size",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        # attach the timing information to allure report
+        allure.attach(
+            f"Validation took {elapsed_time:.2f} seconds",
+            name="Validation time",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        # attach the performance metrics to allure report
+        allure.attach(
+            f"Round completed at {validation_complete}",
+            name="Round completion time",
+            attachment_type=allure.attachment_type.TEXT
+        )
+
+
         return performance
 
 
@@ -84,6 +146,9 @@ class FEDnWrapper:
 
 
 def main():
+    start_test_time = time.perf_counter()
+
+
     project_url = os.getenv("PROJECT_URL")
     print("project_url: ", project_url)
     client_token = os.getenv("FEDN_AUTH_TOKEN")
