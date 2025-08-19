@@ -5,9 +5,20 @@ import yaml
 import argparse
 import csv
 from trainer import PersistentDataLoader
-
+import paramiko
 
 exp_name = 'lean_ml_fhl_airfield_lr_0.001-500_exp2'
+LOCAL_PATH = "/data/aggregated_datasets"
+ACROSSER = {
+    "host": "100.124.13.41",  # Acrosser IP
+    "user": "nviduser",
+    "password": "nVidia64GB"
+}
+JETSONS = [
+    {"host": "192.168.1.2", "user": "nviduser", "password": "nVidia64GB", "path": "PATH1"},
+    {"host": "192.168.1.3", "user": "nviduser", "password": "nVidia64GB", "path": "PATH2"},
+    {"host": "192.168.1.4", "user": "nviduser", "password": "nVidia64GB", "path": "PATH3"},
+]
 
 def log_metrics(round_id, metrics, filename='nono/step.csv'):
     """
@@ -32,8 +43,27 @@ def log_metrics(round_id, metrics, filename='nono/step.csv'):
         })
         f.flush()
 
-def main():
+def fetch_and_stream(server_path):
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(ACROSSER["host"], username=ACROSSER["user"], password=ACROSSER["password"])
 
+    for jetson in JETSONS:
+        # Command on Acrosser: scp from Jetson → Server
+        cmd = (
+            f"scp -r {jetson['user']}@{jetson['host']}:{jetson['path']} "
+            f"{ACROSSER['user']}@{ACROSSER['host']}:{server_path}/{jetson['user']}"
+        )
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        print(stdout.read().decode())
+        print(stderr.read().decode())
+
+    ssh.close()
+    
+def main():
+    #time box start
+    fetch_and_stream(LOCAL_PATH)
+    #time box end
     with open(os.path.join("utils", "args.yaml"), errors="ignore") as f:
         params = yaml.safe_load(f)
     parser = argparse.ArgumentParser()
