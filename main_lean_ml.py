@@ -6,6 +6,8 @@ import argparse
 import csv
 from trainer import PersistentDataLoader
 import paramiko
+import allure
+import time
 
 exp_name = 'lean_ml_fhl_airfield_lr_0.001-500_exp2'
 LOCAL_PATH = "/data/aggregated_datasets"
@@ -43,6 +45,8 @@ def log_metrics(round_id, metrics, filename='nono/step.csv'):
         })
         f.flush()
 
+
+@allure.step("Fetch Data Partitions")
 def fetch_and_stream(server_path):
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -59,11 +63,28 @@ def fetch_and_stream(server_path):
         print(stderr.read().decode())
 
     ssh.close()
-    
+
+
+@allure.feature("Model Training")
+@allure.story("Centralized ML Training")
 def main():
-    #time box start
-    fetch_and_stream(LOCAL_PATH)
-    #time box end
+    start_test_time = time.perf_counter()
+    allure.attach(
+        f"Test started at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_test_time))}",
+        name="Test start time",
+        attachment_type=allure.attachment_type.TEXT
+    )
+    
+    # Fetch and stream data from Jetsons to local path and log the time taken
+    time_fetch_data = time.perf_counter()
+    fetch_and_stream(LOCAL_PATH) # add path
+    allure.attach(
+        f"Data fetched in {time.perf_counter() - time_fetch_data:.2f} seconds",
+        name="Data Fetch Time",
+        attachment_type=allure.attachment_type.TEXT
+    )
+    time_process_data = time.perf_counter()
+
     with open(os.path.join("utils", "args.yaml"), errors="ignore") as f:
         params = yaml.safe_load(f)
     parser = argparse.ArgumentParser()
@@ -94,15 +115,30 @@ def main():
     for client_name in client_names:
         val_clients[client_name.split("/")[-1]] = Trainer(args, params, data_path=client_name)
 
+    allure.attach(
+        f"Data processing took {time.perf_counter() - time_process_data:.2f} seconds",
+        name="Data Processing Time",
+        attachment_type=allure.attachment_type.TEXT
+    )
+    allure.attach(
+        f"Training started at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.perf_counter()))}",
+        name="Training Start Time",
+        attachment_type=allure.attachment_type.TEXT
+    )
     for epoch in range(2000):
+        print(f"Epoch {epoch + 1}/{2000}")
+        train_start = time.perf_counter()
+        allure.attach(
+            f"Epoch {epoch + 1} started at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(train_start))}",
+            name=f"Epoch {epoch + 1} Start Time",
+            attachment_type=allure.attachment_type.TEXT
+        )
         trainer.train()
         for val_client in val_clients:
             name = val_client
             val_clients[val_client].model.load_state_dict(trainer.model.state_dict())
             m_pre, m_rec, map50, mean_ap = val_clients[val_client].validate()
             log_metrics(epoch, [m_pre, m_rec, map50, mean_ap], os.path.join(exp_name,name+'_step.csv'))
-
-
 
 
 

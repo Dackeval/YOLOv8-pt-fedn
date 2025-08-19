@@ -9,6 +9,8 @@ from dataloader import get_dataloader
 from nets import nn
 from utils import util
 
+import allure
+
 class PersistentDataLoader:
         def __init__(self, dataloader):
             self.dataloader = dataloader
@@ -89,7 +91,7 @@ class Trainer:
         ]
     
     
-
+    @allure.step("Training the model, 1 Epoch") 
     def train(self):
         torch.cuda.empty_cache()
 
