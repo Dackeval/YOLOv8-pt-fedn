@@ -8,6 +8,8 @@ from trainer import PersistentDataLoader
 import paramiko
 import allure
 import time
+import pathlib
+import shutil
 
 exp_name = 'lean_ml_fhl_airfield_lr_0.001-500_exp2'
 LOCAL_PATH = "/data/aggregated_datasets"
@@ -64,6 +66,41 @@ def fetch_and_stream(server_path):
 
     ssh.close()
 
+def create_central_directory(
+    path="/Users/sigvard/Downloads/WiSARDv1", # Need to change this for the Roving Edge
+    central_dir="/Users/sigvard/Downloads/Central_WiSARDv1", # Need to change this for the Roving Edge
+    exts=None,          # e.g. {".jpg",".png",".txt"}; None = all files
+    fresh=False         # True = clear target files first
+):
+    src_root = pathlib.Path(path).resolve()
+    dst_root = pathlib.Path(central_dir).resolve()
+
+    if fresh and dst_root.exists():
+        for p in dst_root.rglob("*"):
+            if p.is_file():
+                p.unlink()
+
+    dst_root.mkdir(parents=True, exist_ok=True)
+
+    total = copied = skipped = 0
+    for f in src_root.rglob("*"):
+        if not f.is_file():
+            continue
+        if exts and f.suffix.lower() not in exts:
+            continue
+        total += 1
+
+        rel = f.relative_to(src_root)          # e.g. pt1/210.../frame001.jpg
+        flat_name = "__".join(rel.parts)       # pt1__210...__frame001.jpg
+        dst = dst_root / flat_name
+
+        try:
+            shutil.copy2(f, dst)
+            copied += 1
+        except Exception as e:
+            print(f"[WARN] failed {f} -> {dst}: {e}")
+            skipped += 1
+
 
 @allure.feature("Model Training")
 @allure.story("Centralized ML Training")
@@ -84,6 +121,15 @@ def main():
         attachment_type=allure.attachment_type.TEXT
     )
     time_process_data = time.perf_counter()
+
+    # Create a centralized directory for the data to be processed
+    create_central_directory(
+        path="", # Specify path of where fetch and stream will put the data
+        central_dir="", # Specify the path where you want to create the central directory
+        exts={".jpg", ".png", ".txt"},
+        fresh=True
+    )
+
 
     with open(os.path.join("utils", "args.yaml"), errors="ignore") as f:
         params = yaml.safe_load(f)
