@@ -3,11 +3,14 @@ set -euo pipefail
 
 USER="nviduser"
 HOSTS=(192.168.1.2 192.168.1.3 192.168.1.4)
-
 REMOTE_PROJECT_DIR="/home/nviduser/YOLOv8-pt-fedn"
-REMOTE_VENV_ACTIVATE="/home/nviduser/fedn_venv/bin/activate"
+REMOTE_PYTHON="/home/nviduser/fedn_venv/bin/python"   # or /home/nviduser/fedn_venv/bin/python
 SCRIPT="main_fedn_version.py"
-ARGS="--epochs 1 --batch-size 4 --local_updates 10"
+
+# Pass args as separate vars to avoid $ARGS parsing issues
+EPOCHS=1
+BATCH_SIZE=4
+LOCAL_UPDATES=10
 
 for host in "${HOSTS[@]}"; do
   echo "===> ${host} :: starting client"
@@ -15,9 +18,9 @@ for host in "${HOSTS[@]}"; do
     REMOTE_PROJECT_DIR="$REMOTE_PROJECT_DIR" \
     REMOTE_PYTHON="$REMOTE_PYTHON" \
     SCRIPT="$SCRIPT" \
-    ARGS="$ARGS" \
+    EPOCHS="$EPOCHS" BATCH_SIZE="$BATCH_SIZE" LOCAL_UPDATES="$LOCAL_UPDATES" \
     'bash -s' <<'REMOTE'
-set -e
+set -euo pipefail
 cd "$REMOTE_PROJECT_DIR"
 
 # sanity checks
@@ -33,7 +36,21 @@ fi
 mkdir -p logs
 
 # run in background and log
-nohup "$REMOTE_PYTHON" "$SCRIPT" $ARGS >> "logs/$(hostname)-fedn.log" 2>&1 &
+nohup_test='python.*main_fedn_version\.py'
+
+# skip if already running
+if pgrep -f "$nohup_test" >/dev/null 2>&1; then
+  echo "Already running on $(hostname):"
+  pgrep -fa "$nohup_test"
+  exit 0
+fi
+
+mkdir -p logs
+nohup "$REMOTE_PYTHON" "$SCRIPT" \
+  --epochs "$EPOCHS" \
+  --batch-size "$BATCH_SIZE" \
+  --local_updates "$LOCAL_UPDATES" \
+  >> "logs/$(hostname)-fedn.log" 2>&1 &
 echo $! > logs/fedn.pid
 sleep 1
 

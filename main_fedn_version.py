@@ -8,6 +8,7 @@ from fedn.network.clients.fedn_client import ConnectToApiResult, FednClient
 from fedn.utils.helpers.helpers import save_metadata
 import time
 import allure
+import socket
 
 from trainer import Trainer
 from fedn_util import extract_weights_from_model, load_weights_into_model
@@ -209,8 +210,9 @@ def main():
     args = parser.parse_args()
 
     data_path = resolve_data_path(params)
-    name = os.path.basename(os.path.normpath(data_path))
-
+    data_base = os.path.basename(os.path.normpath(data_path))
+    unique_name = f"{socket.gethostname()}-{data_base}"
+    fedn_client.set_name(unique_name)
     # pass it explicitly
     trainer = Trainer(args, params, data_path=data_path)
 
