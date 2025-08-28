@@ -10,8 +10,6 @@ import allure
 import time
 from paramiko.proxy import ProxyCommand
 import stat
-import random
-import shutil
 
 exp_name = 'lean_ml_fhl_airfield_lr_0.001-500_exp2'
 LOCAL_PATH = "/Users/katjahellgren/YOLOv8-pt-fedn/datasets"
@@ -26,62 +24,6 @@ JETSONS = [
     #{"host": "192.168.1.4", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt3"},
 ]
 
-
-# Output folders
-OUTPUT_PATH = "/Users/katjahellgren/YOLOv8-pt-fedn/split_datasets"
-TRAIN_PATH = os.path.join(OUTPUT_PATH, "train")
-TEST_PATH = os.path.join(OUTPUT_PATH, "valid")
-
-# File extensions
-IMAGE_EXTS = (".jpg", ".jpeg", ".png")
-TEXT_EXT = ".txt"
-
-TRAIN_RATIO = 0.8
-
-
-def make_dirs():
-    for path in [TRAIN_PATH, TEST_PATH]:
-        os.makedirs(path, exist_ok=True)
-
-
-def get_pairs():
-    """Return a list of (image_path, text_path) pairs."""
-    pairs = []
-    for fname in os.listdir(LOCAL_PATH):
-        if fname.lower().endswith(IMAGE_EXTS):
-            base = os.path.splitext(fname)[0]
-            img_path = os.path.join(LOCAL_PATH, fname)
-            txt_path = os.path.join(LOCAL_PATH, base + TEXT_EXT)
-            if os.path.exists(txt_path):
-                pairs.append((img_path, txt_path))
-            else:
-                print(f"⚠️  Warning: text file missing for {img_path}")
-    return pairs
-
-def split_pairs():
-    pairs = get_pairs()
-    random.shuffle(pairs)
-
-    split_idx = int(len(pairs) * TRAIN_RATIO)
-    train_pairs = pairs[:split_idx]
-    test_pairs = pairs[split_idx:]
-
-    # ✅ Ensure train/test subdirectories exist
-    for subset in ["train", "valid"]:
-        os.makedirs(os.path.join(OUTPUT_PATH, subset, "images"), exist_ok=True)
-        os.makedirs(os.path.join(OUTPUT_PATH, subset, "labels"), exist_ok=True)
-
-    # Copy train pairs
-    for img, txt in train_pairs:
-        shutil.copy2(img, os.path.join(TRAIN_PATH, "images"))
-        shutil.copy2(txt, os.path.join(TRAIN_PATH, "labels"))
-
-    # Copy test pairs
-    for img, txt in test_pairs:
-        shutil.copy2(img, os.path.join(TEST_PATH, "images"))
-        shutil.copy2(txt, os.path.join(TEST_PATH, "labels"))
-
-    print(f"✅ Split done: {len(train_pairs)} train pairs, {len(test_pairs)} test pairs")
 
 def log_metrics(round_id, metrics, filename='nono/step.csv'):
     """
@@ -179,7 +121,6 @@ def main():
     )
     time_process_data = time.perf_counter()
 
-    #split_pairs()
     with open(os.path.join("utils", "args.yaml"), errors="ignore") as f:
         params = yaml.safe_load(f)
     parser = argparse.ArgumentParser()
@@ -194,20 +135,15 @@ def main():
     if not os.path.exists(exp_name):
         os.makedirs(exp_name)
 
-    #client_names = ['/home/niklas/fedn-ultralytics-tutorial/datasets/dataset_FHL',
-    #'/home/niklas/fedn-ultralytics-tutorial/datasets/dataset_Airfield']
     
-    #dataset_path = params['dataset_path']
-    client_names = [params['dataset_path']] #[os.path.join(dataset_path,'dataset_Airfield')]#,
-#                  os.path.join(dataset_path,'dataset_FHL')]
-    train_loader = get_concatenated_dataloader(client_names, "train", args, params,num_workers=8)
+    dataset_path = params['dataset_path']
+    train_loader = get_concatenated_dataloader(dataset_path, "train", args, params,num_workers=8)
     print("train_loader dataset len: ", len(train_loader.dataset))
-    trainer = Trainer(args, params, data_path=client_names[0])
+    trainer = Trainer(args, params, data_path=dataset_path)
     trainer.train_loader = PersistentDataLoader(train_loader)
 
     val_clients = {}
-    for client_name in client_names:
-        val_clients[client_name.split("/")[-1]] = Trainer(args, params, data_path=client_name)
+    val_clients[dataset_path.split("/")[-1]] = Trainer(args, params, data_path=dataset_path)
 
     allure.attach(
         f"Data processing took {time.perf_counter() - time_process_data:.2f} seconds",
