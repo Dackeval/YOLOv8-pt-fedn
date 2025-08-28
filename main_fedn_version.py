@@ -11,9 +11,32 @@ import allure
 
 from trainer import Trainer
 from fedn_util import extract_weights_from_model, load_weights_into_model
+from config import settings
 
 
-
+def nbytes(obj) -> int:
+    """Return byte size for path/bytes/BytesIO/stream-like objects."""
+    if isinstance(obj, (str, os.PathLike)):
+        return os.path.getsize(obj)
+    if isinstance(obj, (bytes, bytearray, memoryview)):
+        return len(obj)
+    # BytesIO (and most io.BufferedIOBase) exposes getbuffer()
+    gb = getattr(obj, "getbuffer", None)
+    if callable(gb):
+        return gb().nbytes
+    gv = getattr(obj, "getvalue", None)
+    if callable(gv):
+        return len(gv())
+    # Generic readable stream fallback
+    read = getattr(obj, "read", None)
+    if callable(read):
+        pos = obj.tell() if hasattr(obj, "tell") else None
+        data = read()
+        size = len(data) if data is not None else 0
+        if pos is not None and hasattr(obj, "seek"):
+            obj.seek(pos)
+        return size
+    raise TypeError(f"Don't know how to get size of {type(obj)}")
 
 with open(os.path.join("utils", "args.yaml"), errors="ignore") as f:
     params = yaml.safe_load(f)
@@ -64,8 +87,11 @@ class FEDnWrapper:
         elapsed_time = time.perf_counter() - train_start
         print(f"Training took {elapsed_time:.2f} seconds")
         # size of the model and metadata
-        train_communication_size = os.path.getsize(out_model) + os.path.getsize(training_metadata)
-        print(f"Communication size for training: {train_communication_size} bytes")
+        model_size_bytes = nbytes(out_model)
+        meta_size_bytes  = len(json.dumps(training_metadata, separators=(",", ":")).encode("utf-8"))
+        train_communication_size = model_size_bytes + meta_size_bytes
+        print(f"Communication size for training: {train_communication_size} bytes "
+            f"(model={model_size_bytes}, meta={meta_size_bytes})")
         # attach the size of the model and metadata to allure report
         allure.attach(
             f"{train_communication_size} bytes",
@@ -95,7 +121,7 @@ class FEDnWrapper:
         print("val distance: ", distance)
         print("old state: ",  np.sum([np.linalg.norm(a) for a in old_weights]))
         print("new state: ",  np.sum([np.linalg.norm(a) for a in upd_weights]))
-        m_pre, m_rec, map50, mean_ap = self.trainer.validate()
+        m_pre, m_rec, map50, mean_ap = self.trainer.validate(self.trainer.model)
 
         performance = {
             "val_precision": m_pre,
@@ -113,7 +139,7 @@ class FEDnWrapper:
         # round time 
         validation_complete = time.time()
 
-        validation_metrics_size = os.path.getsize(performance)
+        validation_metrics_size = len(json.dumps(performance, separators=(",", ":")).encode("utf-8"))
         print(f"Communication size for validation: {validation_metrics_size} bytes")
 
         allure.attach(
@@ -146,9 +172,9 @@ def main():
         attachment_type=allure.attachment_type.TEXT
     )
 
-    project_url = os.getenv("PROJECT_URL")
+    project_url = str(settings.get("DISCOVER_HOST"))
     print("project_url: ", project_url)
-    client_token = os.getenv("FEDN_AUTH_TOKEN")
+    client_token = str(settings.get("CLIENT_TOKEN"))
     print("client_token: ", client_token)
 
     data_path = os.getenv("DATA_PATH")

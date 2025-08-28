@@ -98,7 +98,7 @@ class Trainer:
     
 
     def train(self):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = self.device
 
         if device.type == "cuda":
             torch.cuda.empty_cache()
@@ -218,8 +218,7 @@ class Trainer:
 
     @torch.no_grad()
     def validate(self, val_model, threshold=0.5):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+        device = self.device
         if device.type == "cuda":
             torch.cuda.empty_cache()
 
