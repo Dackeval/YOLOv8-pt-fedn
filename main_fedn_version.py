@@ -212,7 +212,6 @@ def main():
     data_path = resolve_data_path(params)
     data_base = os.path.basename(os.path.normpath(data_path))
     unique_name = f"{socket.gethostname()}-{data_base}"
-    fedn_client.set_name(unique_name)
     # pass it explicitly
     trainer = Trainer(args, params, data_path=data_path)
 
