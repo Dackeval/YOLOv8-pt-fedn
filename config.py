@@ -14,6 +14,7 @@ LOCAL_CONFIG = {
 
 REMOTE_CONFIG = {
     "DISCOVER_HOST": "api.studio.scaleoutplatform.com/yolo-wwy-fedn-reducer",
+    "DATA_PATH": "/home/nviduser/YOLOv8-pt-fedn/dataset",
     "DISCOVER_PORT": None,
     "IS_LOCAL": False,
     "SECURE": True,
