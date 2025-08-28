@@ -13,13 +13,13 @@ LOCAL_CONFIG = {
 }
 
 REMOTE_CONFIG = {
-    "DISCOVER_HOST": "api.studio.scaleoutplatform.com/yolo-wwy-fedn-reducer",
+    "DISCOVER_HOST": "api.fedn.scaleoutsystems.com/test-zxw-fedn-reducer",
     "DATA_PATH": "/home/nviduser/YOLOv8-pt-fedn/dataset",
     "DISCOVER_PORT": None,
     "IS_LOCAL": False,
     "SECURE": True,
     "VERIFY": True,
-    "CLIENT_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzU4OTczOTgzLCJpYXQiOjE3NTYzODE5ODMsImp0aSI6IjljZDFkOTYzZGZlYTQ1YmI4NTUxNzY5MTdjMWQzOWZjIiwidXNlcl9pZCI6IjU4IiwiY3JlYXRvciI6InNpZ3ZhcmRAc2NhbGVvdXRzeXN0ZW1zLmNvbSIsInJvbGUiOiJjbGllbnQiLCJwcm9qZWN0X3NsdWciOiJ5b2xvLXd3eSJ9.IFdafa--xq81mp9H3a2W_1mPop_B02becEkN-gG81wE",
+    "CLIENT_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzU4OTgxMzQ0LCJpYXQiOjE3NTYzODkzNDQsImp0aSI6IjA2Mzk4NTI0ZTc1MTQ5YmI5ZDJmZDczMWZkYTNjYzA0IiwidXNlcl9pZCI6MTYxLCJjcmVhdG9yIjoiU2NhbGVvdXRpbnRlcm4iLCJyb2xlIjoiY2xpZW50IiwicHJvamVjdF9zbHVnIjoidGVzdC16eHcifQ.7AszTEa4NWkl7be4OeMpny-AwI3HOlGiUZZ_UqOIJf0",
     "ADMIN_TOKEN": None,
 }
 
