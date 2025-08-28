@@ -26,14 +26,15 @@ def get_dataloader(client_name, set_, args, params,num_workers=8):
 
 
 def get_concatenated_dataloader(client_names, set_, args, params,num_workers=8):
-    filenames = []
-    for client_name in client_names:
-        with open(os.path.join(client_name, set_+".txt")) as reader:
-            for filename in reader.readlines():
-                filenames.append(filename[:-1])
 
-    #for f in filenames:
-     #   print(f)
+    filenames = []
+    client_name = '/Users/katjahellgren/YOLOv8-pt-fedn/split_datasets'
+    with open(os.path.join(client_name, set_+".txt")) as reader:
+        for filename in reader.readlines():
+            filenames.append(filename[:-1])
+
+    for f in filenames:
+       print(f)
     print("len filenames: ", len(filenames))
     dataset = Dataset(filenames, args.input_size, params, set_== "train")
     print("dataset len: ", len(dataset))
