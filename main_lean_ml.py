@@ -8,11 +8,10 @@ from trainer import PersistentDataLoader
 import paramiko
 import allure
 import time
-import pathlib
-import shutil
 from paramiko.proxy import ProxyCommand
 import stat
-
+import random
+import shutil
 
 exp_name = 'lean_ml_fhl_airfield_lr_0.001-500_exp2'
 LOCAL_PATH = "/Users/katjahellgren/YOLOv8-pt-fedn/datasets"
@@ -22,10 +21,67 @@ ACROSSER = {
     "password": "nVidia64GB"
 }
 JETSONS = [
-    {"host": "192.168.1.2", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt1"},
-    {"host": "192.168.1.3", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt2"},
-    {"host": "192.168.1.4", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt3"},
+    {"host": "192.168.1.2", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt1/200614_SuddenValley_Phantom_VIS_0005"},
+    #{"host": "192.168.1.3", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt2"},
+    #{"host": "192.168.1.4", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt3"},
 ]
+
+
+# Output folders
+OUTPUT_PATH = "/Users/katjahellgren/YOLOv8-pt-fedn/split_datasets"
+TRAIN_PATH = os.path.join(OUTPUT_PATH, "train")
+TEST_PATH = os.path.join(OUTPUT_PATH, "valid")
+
+# File extensions
+IMAGE_EXTS = (".jpg", ".jpeg", ".png")
+TEXT_EXT = ".txt"
+
+TRAIN_RATIO = 0.8
+
+
+def make_dirs():
+    for path in [TRAIN_PATH, TEST_PATH]:
+        os.makedirs(path, exist_ok=True)
+
+
+def get_pairs():
+    """Return a list of (image_path, text_path) pairs."""
+    pairs = []
+    for fname in os.listdir(LOCAL_PATH):
+        if fname.lower().endswith(IMAGE_EXTS):
+            base = os.path.splitext(fname)[0]
+            img_path = os.path.join(LOCAL_PATH, fname)
+            txt_path = os.path.join(LOCAL_PATH, base + TEXT_EXT)
+            if os.path.exists(txt_path):
+                pairs.append((img_path, txt_path))
+            else:
+                print(f"⚠️  Warning: text file missing for {img_path}")
+    return pairs
+
+def split_pairs():
+    pairs = get_pairs()
+    random.shuffle(pairs)
+
+    split_idx = int(len(pairs) * TRAIN_RATIO)
+    train_pairs = pairs[:split_idx]
+    test_pairs = pairs[split_idx:]
+
+    # ✅ Ensure train/test subdirectories exist
+    for subset in ["train", "valid"]:
+        os.makedirs(os.path.join(OUTPUT_PATH, subset, "images"), exist_ok=True)
+        os.makedirs(os.path.join(OUTPUT_PATH, subset, "labels"), exist_ok=True)
+
+    # Copy train pairs
+    for img, txt in train_pairs:
+        shutil.copy2(img, os.path.join(TRAIN_PATH, "images"))
+        shutil.copy2(txt, os.path.join(TRAIN_PATH, "labels"))
+
+    # Copy test pairs
+    for img, txt in test_pairs:
+        shutil.copy2(img, os.path.join(TEST_PATH, "images"))
+        shutil.copy2(txt, os.path.join(TEST_PATH, "labels"))
+
+    print(f"✅ Split done: {len(train_pairs)} train pairs, {len(test_pairs)} test pairs")
 
 def log_metrics(round_id, metrics, filename='nono/step.csv'):
     """
@@ -103,42 +159,6 @@ def fetch_and_aggregate():
         ssh.close()
         print(f"✅ Done with {jetson['host']}\n")
 
-def create_central_directory(
-    path="/Users/sigvard/Downloads/WiSARDv1", # Need to change this for the Roving Edge
-    central_dir="/Users/sigvard/Downloads/Central_WiSARDv1", # Need to change this for the Roving Edge
-    exts=None,          # e.g. {".jpg",".png",".txt"}; None = all files
-    fresh=False         # True = clear target files first
-):
-    src_root = pathlib.Path(path).resolve()
-    dst_root = pathlib.Path(central_dir).resolve()
-
-    if fresh and dst_root.exists():
-        for p in dst_root.rglob("*"):
-            if p.is_file():
-                p.unlink()
-
-    dst_root.mkdir(parents=True, exist_ok=True)
-
-    total = copied = skipped = 0
-    for f in src_root.rglob("*"):
-        if not f.is_file():
-            continue
-        if exts and f.suffix.lower() not in exts:
-            continue
-        total += 1
-
-        rel = f.relative_to(src_root)          # e.g. pt1/210.../frame001.jpg
-        flat_name = "__".join(rel.parts)       # pt1__210...__frame001.jpg
-        dst = dst_root / flat_name
-
-        try:
-            shutil.copy2(f, dst)
-            copied += 1
-        except Exception as e:
-            print(f"[WARN] failed {f} -> {dst}: {e}")
-            skipped += 1
-
-
 @allure.feature("Model Training")
 @allure.story("Centralized ML Training")
 def main():
@@ -151,7 +171,7 @@ def main():
     
     # Fetch and stream data from Jetsons to local path and log the time taken
     time_fetch_data = time.perf_counter()
-    fetch_and_aggregate() # add path
+    #fetch_and_aggregate() # add path
     allure.attach(
         f"Data fetched in {time.perf_counter() - time_fetch_data:.2f} seconds",
         name="Data Fetch Time",
@@ -159,15 +179,7 @@ def main():
     )
     time_process_data = time.perf_counter()
 
-    # Create a centralized directory for the data to be processed
-    create_central_directory(
-        path="", # Specify path of where fetch and stream will put the data
-        central_dir="", # Specify the path where you want to create the central directory
-        exts={".jpg", ".png", ".txt"},
-        fresh=True
-    )
-
-
+    #split_pairs()
     with open(os.path.join("utils", "args.yaml"), errors="ignore") as f:
         params = yaml.safe_load(f)
     parser = argparse.ArgumentParser()
@@ -185,10 +197,9 @@ def main():
     #client_names = ['/home/niklas/fedn-ultralytics-tutorial/datasets/dataset_FHL',
     #'/home/niklas/fedn-ultralytics-tutorial/datasets/dataset_Airfield']
     
-    dataset_path = params['dataset_path']
-    client_names = [os.path.join(dataset_path,'dataset_Airfield')]#,
+    #dataset_path = params['dataset_path']
+    client_names = [params['dataset_path']] #[os.path.join(dataset_path,'dataset_Airfield')]#,
 #                  os.path.join(dataset_path,'dataset_FHL')]
-
     train_loader = get_concatenated_dataloader(client_names, "train", args, params,num_workers=8)
     print("train_loader dataset len: ", len(train_loader.dataset))
     trainer = Trainer(args, params, data_path=client_names[0])
