@@ -91,13 +91,26 @@ class Trainer:
     
 
     def train(self):
-        torch.cuda.empty_cache()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
 
         print("trainer train starts")
         t0 = time.time()
 
         accumulate = max(round(64 / self.args.batch_size), 1)
-        amp_scale = torch.amp.GradScaler("cuda")
+        
+        # Use autocast + GradScaler only if CUDA is available
+        if device.type == "cuda":
+            scaler = torch.cuda.amp.GradScaler()
+            autocast = torch.cuda.amp.autocast
+        else:
+            scaler = None
+            # no-op context manager
+            from contextlib import nullcontext
+            autocast = nullcontext
+
         criterion = util.ComputeLoss(self.model, self.params)
         num_warmup = 1000
 
@@ -113,14 +126,15 @@ class Trainer:
 
         for _ in p_bar:
             samples, targets, _, indices = next(self.train_loader)
-            self.usage_counter[indices] += 1  # <-- update usage manually here
+            self.usage_counter[indices] += 1
 
             x = self.prev_iterations
 
-            samples = samples.cuda().float() / 255
-            targets = targets.cuda()
+            # ✅ Move to correct device
+            samples = samples.to(device).float() / 255
+            targets = targets.to(device)
 
-            # Warmup
+            # Warmup logic (unchanged)
             if x <= num_warmup:
                 warm_up = True
                 xp = [0, num_warmup]
@@ -137,31 +151,43 @@ class Trainer:
                         fp = [self.params["warmup_momentum"], self.params["momentum"]]
                         y["momentum"] = np.interp(x, xp, fp)
 
-            # Forward
-            with torch.amp.autocast("cuda"):
+            # Forward pass
+            with autocast():
                 outputs = self.model(samples)
-            loss = criterion(outputs, targets)
-            m_loss.update(loss.item(), samples.size(0))
+                loss = criterion(outputs, targets)
 
+            m_loss.update(loss.item(), samples.size(0))
             loss *= self.args.batch_size
 
-            amp_scale.scale(loss).backward()
+            if scaler:
+                scaler.scale(loss).backward()
+            else:
+                loss.backward()
 
             if x % accumulate == 0:
-                amp_scale.unscale_(self.optimizer)
-                util.clip_gradients(self.model)
-                amp_scale.step(self.optimizer)
-                amp_scale.update()
+                if scaler:
+                    scaler.unscale_(self.optimizer)
+                    util.clip_gradients(self.model)
+                    scaler.step(self.optimizer)
+                    scaler.update()
+                else:
+                    util.clip_gradients(self.model)
+                    self.optimizer.step()
+
                 self.optimizer.zero_grad()
                 if self.ema:
                     self.ema.update(self.model)
 
-            # Update progress bar
-            memory = f"{torch.cuda.memory_reserved() / 1e9:.3g}G"
+            # Progress bar
+            if device.type == "cuda":
+                memory = f"{torch.cuda.memory_reserved() / 1e9:.3g}G"
+            else:
+                memory = "CPU"
+
             p_bar.set_description(
                 ("%10s" * 3 + "%10.4g" * 2)
                 % (
-                    f"{self.prev_iterations%self.args.local_updates + 1}/{self.args.local_updates}",  # Model updates progress
+                    f"{self.prev_iterations%self.args.local_updates + 1}/{self.args.local_updates}",
                     memory,
                     str(warm_up),
                     x,
@@ -173,7 +199,9 @@ class Trainer:
 
         self.scheduler.step()
 
-        torch.cuda.empty_cache()
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+
         self.round_index += 1
         print("training done")
         t1 = time.time()
@@ -182,79 +210,71 @@ class Trainer:
     
 
     @torch.no_grad()
-    def validate(self, val_model, treshold = 0.5):
-        torch.cuda.empty_cache()
-        print(
-            "validate start",
-        )
+    def validate(self, val_model, threshold=0.5):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+
+        print("validate start")
         t0 = time.time()
-        
-        #self.model.half()
+
         val_model.eval()
 
         # Configure
-        iou_v = torch.linspace(0.5, 0.95, 10).cuda()  # iou vector for mAP@0.5:0.95
+        iou_v = torch.linspace(0.5, 0.95, 10).to(device)  # IoU thresholds
         n_iou = iou_v.numel()
 
-        m_pre = 0.0
-        m_rec = 0.0
-        map50 = 0.0
-        mean_ap = 0.0
+        m_pre, m_rec, map50, mean_ap = 0.0, 0.0, 0.0, 0.0
         metrics = []
-        p_bar = tqdm.tqdm(
-            self.val_loader, desc=("%10s" * 3) % ("precision", "recall", "mAP")
-        )
-        for samples, targets, shapes,_ in p_bar:
-            samples = samples.cuda()
-            targets = targets.cuda()
-            #samples = samples.half()  # uint8 to fp16/32
-            samples = samples / 255  # 0 - 255 to 0.0 - 1.0
-            _, _, height, width = samples.shape  # batch size, channels, height, width
+
+        p_bar = tqdm.tqdm(self.val_loader, desc=("%10s" * 3) % ("precision", "recall", "mAP"))
+
+        for samples, targets, shapes, _ in p_bar:
+            # ✅ Move data to device
+            samples = samples.to(device).float() / 255
+            targets = targets.to(device)
+
+            _, _, height, width = samples.shape
+
             # Inference
             outputs = val_model(samples)
 
             # NMS
-            targets[:, 2:] *= torch.tensor(
-                (width, height, width, height)
-            ).cuda()  # to pixels
-            outputs = util.non_max_suppression(outputs, treshold, 0.65)
+            targets[:, 2:] *= torch.tensor((width, height, width, height), device=device)
+            outputs = util.non_max_suppression(outputs, threshold, 0.65)
 
             # Metrics
             for i, output in enumerate(outputs):
                 labels = targets[targets[:, 0] == i, 1:]
-                correct = torch.zeros(output.shape[0], n_iou, dtype=torch.bool).cuda()
+                correct = torch.zeros(output.shape[0], n_iou, dtype=torch.bool, device=device)
 
-                # SKYDD mot None-värden
                 if samples[i] is None:
                     print("samples[i]: ", samples[i])
                     continue
 
                 if output.shape[0] == 0:
                     if labels.shape[0]:
-                        metrics.append((correct, *torch.zeros((3, 0)).cuda()))
+                        metrics.append((correct, *torch.zeros((3, 0), device=device)))
                     continue
 
                 if shapes[i] is None:
                     print("shapes[i] is None: ", shapes[i])
-
                     continue
 
                 detections = output.clone()
-                util.scale(
-                    detections[:, :4], samples[i].shape[1:], shapes[i][0], shapes[i][1]
-                )
+                util.scale(detections[:, :4], samples[i].shape[1:], shapes[i][0], shapes[i][1])
 
                 # Evaluate
                 if labels.shape[0]:
-                    tbox = labels[:, 1:5].clone()  # target boxes
-                    tbox[:, 0] = labels[:, 1] - labels[:, 3] / 2  # top left x
-                    tbox[:, 1] = labels[:, 2] - labels[:, 4] / 2  # top left y
-                    tbox[:, 2] = labels[:, 1] + labels[:, 3] / 2  # bottom right x
-                    tbox[:, 3] = labels[:, 2] + labels[:, 4] / 2  # bottom right y
+                    tbox = labels[:, 1:5].clone()
+                    tbox[:, 0] = labels[:, 1] - labels[:, 3] / 2
+                    tbox[:, 1] = labels[:, 2] - labels[:, 4] / 2
+                    tbox[:, 2] = labels[:, 1] + labels[:, 3] / 2
+                    tbox[:, 3] = labels[:, 2] + labels[:, 4] / 2
                     util.scale(tbox, samples[i].shape[1:], shapes[i][0], shapes[i][1])
 
-                    correct = np.zeros((detections.shape[0], iou_v.shape[0]))
-                    correct = correct.astype(bool)
+                    correct = np.zeros((detections.shape[0], iou_v.shape[0]), dtype=bool)
 
                     t_tensor = torch.cat((labels[:, 0:1], tbox), 1)
                     iou = util.box_iou(t_tensor[:, 1:], detections[:, :4])
@@ -262,40 +282,29 @@ class Trainer:
                     for j in range(len(iou_v)):
                         x = torch.where((iou >= iou_v[j]) & correct_class)
                         if x[0].shape[0]:
-                            matches = torch.cat(
-                                (torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1
-                            )
+                            matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1)
                             matches = matches.cpu().numpy()
                             if x[0].shape[0] > 1:
                                 matches = matches[matches[:, 2].argsort()[::-1]]
-                                matches = matches[
-                                    np.unique(matches[:, 1], return_index=True)[1]
-                                ]
-                                matches = matches[
-                                    np.unique(matches[:, 0], return_index=True)[1]
-                                ]
+                                matches = matches[np.unique(matches[:, 1], return_index=True)[1]]
+                                matches = matches[np.unique(matches[:, 0], return_index=True)[1]]
                             correct[matches[:, 1].astype(int), j] = True
-                    correct = torch.tensor(
-                        correct, dtype=torch.bool, device=iou_v.device
-                    )
+                    correct = torch.tensor(correct, dtype=torch.bool, device=device)
+
                 metrics.append((correct, output[:, 4], output[:, 5], labels[:, 0]))
 
         # Compute metrics
-        metrics = [torch.cat(x, 0).cpu().numpy() for x in zip(*metrics)]  # to numpy
+        metrics = [torch.cat(x, 0).cpu().numpy() for x in zip(*metrics)]
         if len(metrics) and metrics[0].any():
             tp, fp, m_pre, m_rec, map50, mean_ap = util.compute_ap(*metrics)
 
         # Print results
         print("%10.3g" * 3 % (m_pre, m_rec, mean_ap))
 
-        # Return results
-        val_model.float()  # for training
+        # Reset model to float32 (important if training continues)
+        val_model.float()
 
-        
         print("validation done")
         t1 = time.time()
         print("validation time: ", t1 - t0)
         return m_pre, m_rec, map50, mean_ap
-    
-
-    
