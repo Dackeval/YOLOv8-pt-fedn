@@ -138,16 +138,13 @@ class FEDnWrapper:
         return performance
 
 
-
-
-
-
-
-
-
 def main():
     start_test_time = time.perf_counter()
-
+    allure.attach(
+        f"Test started at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_test_time))}",
+        name="Test start time",
+        attachment_type=allure.attachment_type.TEXT
+    )
 
     project_url = os.getenv("PROJECT_URL")
     print("project_url: ", project_url)

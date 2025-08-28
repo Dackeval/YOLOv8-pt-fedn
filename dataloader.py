@@ -1,7 +1,9 @@
 import os
 from utils.dataset_wisard import Dataset
 from torch.utils import data
+import torch    
 
+pin = torch.cuda.is_available() 
 
 def get_dataloader(client_name, set_, args, params,num_workers=8):
     filenames = []
@@ -41,9 +43,10 @@ def get_concatenated_dataloader(dataset_path, set_, args, params,num_workers=8):
         batch_size = args.batch_size
     else:
         batch_size = 1
+    pin = torch.cuda.is_available()
 
     loader = data.DataLoader(dataset, batch_size=batch_size,
-                             num_workers=num_workers, pin_memory=True, collate_fn=Dataset.collate_fn,
+                             num_workers=num_workers, pin_memory=pin, collate_fn=Dataset.collate_fn,
                              persistent_workers=True if num_workers > 0 else False, shuffle=True)
     
     return loader
