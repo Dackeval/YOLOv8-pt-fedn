@@ -12,7 +12,8 @@ from paramiko.proxy import ProxyCommand
 import stat
 
 exp_name = 'lean_ml_fhl_airfield_lr_0.001-500_exp2'
-LOCAL_PATH = "/Users/katjahellgren/YOLOv8-pt-fedn/datasets"
+root = os.path.abs_path()
+LOCAL_PATH = os.path.join(root, "datasets")
 ACROSSER = {
     "host": "100.124.13.41",  # Acrosser IP
     "user": "nviduser",

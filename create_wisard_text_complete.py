@@ -3,12 +3,12 @@ import random
 import shutil
 from glob import glob  # You forgot this import
 
-path_to_datasets = "/Users/katjahellgren/YOLOv8-pt-fedn/split_datasets"
-LOCAL_PATH = "/Users/katjahellgren/YOLOv8-pt-fedn/datasets"
+root = os.path.abs_path()
+path_to_datasets = os.path.join(root, "split_datasets")
+LOCAL_PATH = os.path.join(root, "datasets")
 # Output folders
-OUTPUT_PATH = "/Users/katjahellgren/YOLOv8-pt-fedn/split_datasets"
-TRAIN_PATH = os.path.join(OUTPUT_PATH, "train")
-TEST_PATH = os.path.join(OUTPUT_PATH, "valid")
+TRAIN_PATH = os.path.join(path_to_datasets, "train")
+TEST_PATH = os.path.join(path_to_datasets, "valid")
 
 # File extensions
 IMAGE_EXTS = (".jpg", ".jpeg", ".png")
@@ -46,8 +46,8 @@ def split_pairs():
 
     # ✅ Ensure train/test subdirectories exist
     for subset in ["train", "valid"]:
-        os.makedirs(os.path.join(OUTPUT_PATH, subset, "images"), exist_ok=True)
-        os.makedirs(os.path.join(OUTPUT_PATH, subset, "labels"), exist_ok=True)
+        os.makedirs(os.path.join(path_to_datasets, subset, "images"), exist_ok=True)
+        os.makedirs(os.path.join(path_to_datasets, subset, "labels"), exist_ok=True)
 
     # Copy train pairs
     for img, txt in train_pairs:
