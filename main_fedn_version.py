@@ -162,6 +162,23 @@ class FEDnWrapper:
 
 
         return performance
+    
+
+def resolve_data_path(params):
+    candidates = [
+        getattr(settings, "DATA_PATH", None) if settings else None,  # from config.py
+        os.getenv("DATA_PATH"),                                      # env
+        params.get("dataset_path"),                                  # args.yaml
+    ]
+    for p in candidates:
+        if p:
+            p = os.path.abspath(p)
+            # quick sanity: require train.txt & valid.txt exist
+            if os.path.isfile(os.path.join(p, "train.txt")) and os.path.isfile(os.path.join(p, "valid.txt")):
+                return p
+    raise ValueError(
+        "DATA_PATH not set. Put DATA_PATH in config.py, or export DATA_PATH, or set params['dataset_path']."
+    )
 
 
 def main():
@@ -188,7 +205,11 @@ def main():
     parser.add_argument("--local_updates", default=100, type=int)
     args = parser.parse_args()
 
-    trainer = Trainer(args, params)
+    data_path = resolve_data_path(params)
+    name = os.path.basename(os.path.normpath(data_path))  # robust even with trailing slash
+
+    trainer = Trainer(args, params, data_path=data_path)
+    
     fednwrapper = FEDnWrapper(trainer)
 
     fedn_client = FednClient(
