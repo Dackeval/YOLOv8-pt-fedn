@@ -177,7 +177,7 @@ def main():
     client_token = str(settings.get("CLIENT_TOKEN"))
     print("client_token: ", client_token)
 
-    data_path = os.getenv("DATA_PATH")
+    data_path =  str(settings.get("DATA_PATH"))
     name = data_path.split("/")[-1]
 
     parser = argparse.ArgumentParser()
