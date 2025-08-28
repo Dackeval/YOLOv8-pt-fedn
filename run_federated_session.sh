@@ -5,7 +5,7 @@ USER="nviduser"
 HOSTS=(192.168.1.2 192.168.1.3 192.168.1.4)
 
 REMOTE_PROJECT_DIR="/home/nviduser/YOLOv8-pt-fedn"
-REMOTE_VENV_ACTIVATE="$REMOTE_PROJECT_DIR/fedn_env/bin/activate"
+REMOTE_VENV_ACTIVATE="/home/nviduser/fedn_venv/bin/activate"
 SCRIPT="main_fedn_version.py"
 ARGS="--epochs 1 --batch-size 4 --local_updates 10"
 
