@@ -13,6 +13,11 @@ from trainer import Trainer
 from fedn_util import extract_weights_from_model, load_weights_into_model
 from config import settings
 
+try:
+    import config as cfg
+    CFG = getattr(cfg, "settings", {})  # your dict
+except Exception:
+    CFG = {}
 
 def nbytes(obj) -> int:
     """Return byte size for path/bytes/BytesIO/stream-like objects."""
@@ -166,20 +171,18 @@ class FEDnWrapper:
 
 def resolve_data_path(params):
     candidates = [
-        getattr(settings, "DATA_PATH", None) if settings else None,  # from config.py
-        os.getenv("DATA_PATH"),                                      # env
-        params.get("dataset_path"),                                  # args.yaml
+        os.getenv("DATA_PATH"),
+        CFG.get("DATA_PATH"),
+        params.get("dataset_path"),
     ]
     for p in candidates:
         if p:
             p = os.path.abspath(p)
-            # quick sanity: require train.txt & valid.txt exist
-            if os.path.isfile(os.path.join(p, "train.txt")) and os.path.isfile(os.path.join(p, "valid.txt")):
+            if (os.path.isfile(os.path.join(p, "train.txt")) and
+                os.path.isfile(os.path.join(p, "valid.txt"))):
                 return p
-    raise ValueError(
-        "DATA_PATH not set. Put DATA_PATH in config.py, or export DATA_PATH, or set params['dataset_path']."
-    )
-
+    raise ValueError("DATA_PATH not set. Put DATA_PATH in config.py settings, "
+                     "or export DATA_PATH, or set params['dataset_path'].")
 
 def main():
     start_test_time = time.perf_counter()
@@ -206,10 +209,11 @@ def main():
     args = parser.parse_args()
 
     data_path = resolve_data_path(params)
-    name = os.path.basename(os.path.normpath(data_path))  # robust even with trailing slash
+    name = os.path.basename(os.path.normpath(data_path))
 
+    # pass it explicitly
     trainer = Trainer(args, params, data_path=data_path)
-    
+
     fednwrapper = FEDnWrapper(trainer)
 
     fedn_client = FednClient(
