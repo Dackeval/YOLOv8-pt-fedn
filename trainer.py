@@ -30,7 +30,14 @@ class Trainer:
         self.args = args
         self.params = params
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        else:
+            self.device = torch.device("cpu")
+        print("Using device:", self.device)
+
         self.model = nn.yolo_v8_n(len(params["names"].values())).to(self.device)
         self.ema = util.EMA(self.model)
 
@@ -91,7 +98,7 @@ class Trainer:
     
 
     def train(self):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = self.device
 
         if device.type == "cuda":
             torch.cuda.empty_cache()
@@ -211,8 +218,7 @@ class Trainer:
 
     @torch.no_grad()
     def validate(self, val_model, threshold=0.5):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+        device = self.device
         if device.type == "cuda":
             torch.cuda.empty_cache()
 
