@@ -2,8 +2,12 @@ import os
 import random
 import shutil
 from glob import glob  # You forgot this import
+import allure
+from paramiko.proxy import ProxyCommand
+import paramiko
+import stat
 
-root = os.path.abs_path()
+root = os.getcwd()
 path_to_datasets = os.path.join(root, "split_datasets")
 LOCAL_PATH = os.path.join(root, "datasets")
 # Output folders
@@ -16,29 +20,38 @@ TEXT_EXT = ".txt"
 
 TRAIN_RATIO = 0.8
 
+ACROSSER = {
+    "host": "100.124.13.41",  # Acrosser IP
+    "user": "nviduser",
+    "password": "nVidia64GB"
+}
+
+JETSONS = [
+    #{"host": "192.168.1.2", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt1"},
+    {"host": "192.168.1.3", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt2"},
+    {"host": "192.168.1.4", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt3"},
+]
 
 def make_dirs():
     for path in [TRAIN_PATH, TEST_PATH]:
         os.makedirs(path, exist_ok=True)
 
-
 def get_pairs():
-    """Return a list of (image_path, text_path) pairs."""
+    """Find all image/label pairs under DATASETS_PATH recursively."""
+    exts = (".jpg", ".jpeg", ".png")
     pairs = []
-    for fname in os.listdir(LOCAL_PATH):
-        if fname.lower().endswith(IMAGE_EXTS):
-            base = os.path.splitext(fname)[0]
-            img_path = os.path.join(LOCAL_PATH, fname)
-            txt_path = os.path.join(LOCAL_PATH, base + TEXT_EXT)
+    
+    # Recursively find all images
+    for img_path in glob(os.path.join(LOCAL_PATH, "**", "*"), recursive=True):
+        if img_path.lower().endswith(exts):
+            base, _ = os.path.splitext(img_path)
+            txt_path = base + ".txt"
             if os.path.exists(txt_path):
                 pairs.append((img_path, txt_path))
-            else:
-                print(f"⚠️  Warning: text file missing for {img_path}")
     return pairs
 
 def split_pairs():
     pairs = get_pairs()
-    random.shuffle(pairs)
 
     split_idx = int(len(pairs) * TRAIN_RATIO)
     train_pairs = pairs[:split_idx]
@@ -59,35 +72,92 @@ def split_pairs():
         shutil.copy2(img, os.path.join(TEST_PATH, "images"))
         shutil.copy2(txt, os.path.join(TEST_PATH, "labels"))
 
+
     print(f"✅ Split done: {len(train_pairs)} train pairs, {len(test_pairs)} test pairs")
 
-split_pairs()
-# TRAIN
-image_dir = os.path.join(path_to_datasets, "train/images/")
-output_txt = os.path.join(path_to_datasets, "train.txt")
+def sftp_get_dir(sftp, remote_dir, local_dir, jetson_prefix):
+    """Recursively fetch a directory via SFTP and aggregate into one folder."""
+    os.makedirs(local_dir, exist_ok=True)
 
-image_paths = sorted(
-    glob(os.path.join(image_dir, "*.jpg")) +
-    glob(os.path.join(image_dir, "*.jpeg"))
-)
+    for entry in sftp.listdir_attr(remote_dir):
+        remote_path = f"{remote_dir}/{entry.filename}"
 
-with open(output_txt, "w") as f:
-    for path in image_paths:
-        f.write(os.path.abspath(path) + "\n")
+        if stat.S_ISDIR(entry.st_mode):
+            # Recurse into subdir, keep structure
+            new_local_dir = os.path.join(local_dir, entry.filename)
+            sftp_get_dir(sftp, remote_path, new_local_dir, jetson_prefix)
+        else:
+            # Prefix filename with Jetson IP to avoid overwrite
+            base, ext = os.path.splitext(entry.filename)
+            new_filename = f"{jetson_prefix}_{base}{ext}"
+            local_path = os.path.join(local_dir, new_filename)
 
-print(f"Saved {len(image_paths)} image paths to {output_txt}")
+            print(f"Fetching {remote_path} -> {local_path}")
+            sftp.get(remote_path, local_path)
 
-# VALID
-image_dir = os.path.join(path_to_datasets, "valid/images/")
-output_txt = os.path.join(path_to_datasets, "valid.txt")
+@allure.step("Fetch Data Partitions")
+def fetch_and_aggregate():
+    for jetson in JETSONS:
+        print(f"Connecting to Jetson {jetson['host']}...")
 
-image_paths = sorted(
-    glob(os.path.join(image_dir, "*.jpg")) +
-    glob(os.path.join(image_dir, "*.jpeg"))
-)
+        proxy_cmd = (
+            f"ssh -o StrictHostKeyChecking=no "
+            f"-W {jetson['host']}:22 "
+            f"{ACROSSER['user']}@{ACROSSER['host']}"
+        )
+        sock = ProxyCommand(proxy_cmd)
 
-with open(output_txt, "w") as f:
-    for path in image_paths:
-        f.write(os.path.abspath(path) + "\n")
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-print(f"Saved {len(image_paths)} image paths to {output_txt}")
+        ssh.connect(
+            hostname=jetson["host"],
+            username=jetson["user"],
+            sock=sock,
+            password=jetson.get("password")  # if needed
+        )
+
+        sftp = ssh.open_sftp()
+
+        jetson_prefix = jetson["host"].replace('.', '_')
+        print(f"Downloading directory {jetson['path']} (Jetson {jetson_prefix}) into {LOCAL_PATH}")
+        sftp_get_dir(sftp, jetson["path"], LOCAL_PATH, jetson_prefix)
+
+        sftp.close()
+        ssh.close()
+        print(f"✅ Done with {jetson['host']}\n")
+    run()
+
+def run():
+    split_pairs()
+    # TRAIN
+    image_dir = os.path.join(path_to_datasets, "train/images/")
+    output_txt = os.path.join(path_to_datasets, "train.txt")
+
+    image_paths = sorted(
+        glob(os.path.join(image_dir, "*.jpg")) +
+        glob(os.path.join(image_dir, "*.jpeg"))
+    )
+
+    with open(output_txt, "w") as f:
+        for path in image_paths:
+            f.write(os.path.abspath(path) + "\n")
+
+    print(f"Saved {len(image_paths)} image paths to {output_txt}")
+
+    # VALID
+    image_dir = os.path.join(path_to_datasets, "valid/images/")
+    output_txt = os.path.join(path_to_datasets, "valid.txt")
+
+    image_paths = sorted(
+        glob(os.path.join(image_dir, "*.jpg")) +
+        glob(os.path.join(image_dir, "*.jpeg"))
+    )
+
+    with open(output_txt, "w") as f:
+        for path in image_paths:
+            f.write(os.path.abspath(path) + "\n")
+
+    print(f"Saved {len(image_paths)} image paths to {output_txt}")
+
+run()

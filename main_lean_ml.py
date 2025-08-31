@@ -9,21 +9,57 @@ import paramiko
 import allure
 import time
 from paramiko.proxy import ProxyCommand
-import stat
+from create_wisard_text_complete import fetch_and_aggregate
+import torch
 
 exp_name = 'lean_ml_fhl_airfield_lr_0.001-500_exp2'
-root = os.path.abs_path()
-LOCAL_PATH = os.path.join(root, "datasets")
-ACROSSER = {
-    "host": "100.124.13.41",  # Acrosser IP
-    "user": "nviduser",
-    "password": "nVidia64GB"
-}
-JETSONS = [
-    {"host": "192.168.1.2", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt1/200614_SuddenValley_Phantom_VIS_0005"},
-    #{"host": "192.168.1.3", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt2"},
-    #{"host": "192.168.1.4", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt3"},
-]
+root = os.getcwd()
+
+class EarlyStoppingMAP:
+    def __init__(self, patience=5, min_delta=1e-4, verbose=True):
+        """
+        Args:
+            patience (int): Number of epochs to wait for improvement before stopping
+            min_delta (float): Minimum improvement in mAP to count as progress
+            verbose (bool): Print messages when stopping or saving best model
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.verbose = verbose
+        self.best_score = None
+        self.counter = 0
+        self.should_stop = False
+        self.best_state = None  # store model state_dict()
+
+    def __call__(self, current_map, model):
+        if self.best_score is None:
+            self.best_score = current_map
+            self.best_state = model.state_dict()
+            if self.verbose:
+                print(f"Initial best mAP set at {current_map:.4f}")
+        elif current_map < self.best_score + self.min_delta:
+            # No significant improvement
+            self.counter += 1
+            if self.verbose:
+                print(f"No improvement in mAP ({current_map:.4f}), patience {self.counter}/{self.patience}")
+            if self.counter >= self.patience:
+                self.should_stop = True
+                if self.verbose:
+                    print("Early stopping triggered.")
+        else:
+            # Improvement found
+            self.best_score = current_map
+            self.best_state = model.state_dict()
+            self.counter = 0
+            if self.verbose:
+                print(f"New best mAP: {current_map:.4f}")
+
+    def restore_best_weights(self, model):
+        """Restore model to the best saved state"""
+        if self.best_state:
+            model.load_state_dict(self.best_state)
+            if self.verbose:
+                print(f"Restored model to best mAP = {self.best_score:.4f}")
 
 
 def log_metrics(round_id, metrics, filename='nono/step.csv'):
@@ -50,61 +86,10 @@ def log_metrics(round_id, metrics, filename='nono/step.csv'):
         f.flush()
 
 
-def sftp_get_dir(sftp, remote_dir, local_dir, jetson_prefix):
-    """Recursively fetch a directory via SFTP and aggregate into one folder."""
-    os.makedirs(local_dir, exist_ok=True)
-
-    for entry in sftp.listdir_attr(remote_dir):
-        remote_path = f"{remote_dir}/{entry.filename}"
-
-        if stat.S_ISDIR(entry.st_mode):
-            # Recurse into subdir, keep structure
-            new_local_dir = os.path.join(local_dir, entry.filename)
-            sftp_get_dir(sftp, remote_path, new_local_dir, jetson_prefix)
-        else:
-            # Prefix filename with Jetson IP to avoid overwrite
-            base, ext = os.path.splitext(entry.filename)
-            new_filename = f"{jetson_prefix}_{base}{ext}"
-            local_path = os.path.join(local_dir, new_filename)
-
-            print(f"Fetching {remote_path} -> {local_path}")
-            sftp.get(remote_path, local_path)
-
-@allure.step("Fetch Data Partitions")
-def fetch_and_aggregate():
-    for jetson in JETSONS:
-        print(f"Connecting to Jetson {jetson['host']}...")
-
-        proxy_cmd = (
-            f"ssh -o StrictHostKeyChecking=no "
-            f"-W {jetson['host']}:22 "
-            f"{ACROSSER['user']}@{ACROSSER['host']}"
-        )
-        sock = ProxyCommand(proxy_cmd)
-
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        ssh.connect(
-            hostname=jetson["host"],
-            username=jetson["user"],
-            sock=sock,
-            password=jetson.get("password")  # if needed
-        )
-
-        sftp = ssh.open_sftp()
-
-        jetson_prefix = jetson["host"].replace('.', '_')
-        print(f"Downloading directory {jetson['path']} (Jetson {jetson_prefix}) into {LOCAL_PATH}")
-        sftp_get_dir(sftp, jetson["path"], LOCAL_PATH, jetson_prefix)
-
-        sftp.close()
-        ssh.close()
-        print(f"✅ Done with {jetson['host']}\n")
-
 @allure.feature("Model Training")
 @allure.story("Centralized ML Training")
 def main():
+    '''
     start_test_time = time.perf_counter()
     allure.attach(
         f"Test started at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_test_time))}",
@@ -114,21 +99,21 @@ def main():
     
     # Fetch and stream data from Jetsons to local path and log the time taken
     time_fetch_data = time.perf_counter()
-    #fetch_and_aggregate() # add path
+    fetch_and_aggregate()
     allure.attach(
         f"Data fetched in {time.perf_counter() - time_fetch_data:.2f} seconds",
         name="Data Fetch Time",
         attachment_type=allure.attachment_type.TEXT
     )
     time_process_data = time.perf_counter()
-
+    '''
     with open(os.path.join("utils", "args.yaml"), errors="ignore") as f:
         params = yaml.safe_load(f)
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-size", default=640, type=int)
     parser.add_argument("--batch-size", default=32, type=int)
     parser.add_argument("--local_rank", default=0, type=int)
-    parser.add_argument("--epochs", default=500, type=int)
+    parser.add_argument("--epochs", default=1000, type=int)
     parser.add_argument("--local_updates", default=70, type=int)
     args = parser.parse_args()
     params["lr0"] =0.001
@@ -145,7 +130,7 @@ def main():
 
     val_clients = {}
     val_clients[dataset_path.split("/")[-1]] = Trainer(args, params, data_path=dataset_path)
-
+    ''' 
     allure.attach(
         f"Data processing took {time.perf_counter() - time_process_data:.2f} seconds",
         name="Data Processing Time",
@@ -156,6 +141,9 @@ def main():
         name="Training Start Time",
         attachment_type=allure.attachment_type.TEXT
     )
+    '''
+    early_stopper = EarlyStoppingMAP(patience=10, min_delta=1e-3)
+
     for epoch in range(2000):
         print(f"Epoch {epoch + 1}/{2000}")
         train_start = time.perf_counter()
@@ -168,7 +156,12 @@ def main():
         for val_client in val_clients:
             name = val_client
             val_clients[val_client].model.load_state_dict(trainer.model.state_dict())
-            m_pre, m_rec, map50, mean_ap = val_clients[val_client].validate()
+            m_pre, m_rec, map50, mean_ap = val_clients[val_client].validate(trainer.model)
+            early_stopper(mean_ap, trainer.model)
+
+            if early_stopper.should_stop:
+                print(f"Stopping training at epoch {epoch}")
+                break
             log_metrics(epoch, [m_pre, m_rec, map50, mean_ap], os.path.join(exp_name,name+'_step.csv'))
 
 

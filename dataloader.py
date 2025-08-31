@@ -9,8 +9,7 @@ def get_dataloader(client_name, set_, args, params,num_workers=8):
         for filename in reader.readlines():
             filenames.append(filename[:-1])
 
-    #for f in filenames:
-     #   print(f)
+
     dataset = Dataset(filenames, args.input_size, params, set_== "train")
     
     if set_ == 'train':
