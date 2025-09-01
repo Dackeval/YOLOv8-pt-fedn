@@ -153,7 +153,7 @@ def non_max_suppression(prediction, conf_threshold=0.25, iou_threshold=0.45):
         # Batched NMS
         c = x[:, 5:6] * max_wh  # classes
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
-        i = torchvision.ops.nms(boxes, scores, iou_threshold)  # NMS
+        i = torchvision.ops.nms(boxes.detach().cpu(), scores.detach().cpu(), iou_threshold).to(boxes.device)  # NMS
         i = i[:max_det]  # limit detections
         outputs[index] = x[i]
         if (time.time() - start) > 0.5 + 0.05 * prediction.shape[0]:
