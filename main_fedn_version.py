@@ -205,8 +205,8 @@ def main():
     parser.add_argument("--input-size", default=640, type=int)
     parser.add_argument("--batch-size", default=32, type=int)
     parser.add_argument("--local_rank", default=0, type=int)
-    parser.add_argument("--epochs", default=1000, type=int)
-    parser.add_argument("--local_updates", default=100, type=int)
+    parser.add_argument("--epochs", default=1, type=int)
+    parser.add_argument("--local_updates", default=250, type=int)
     args = parser.parse_args()
 
     data_path = resolve_data_path(params)
