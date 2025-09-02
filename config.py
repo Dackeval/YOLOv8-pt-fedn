@@ -11,8 +11,11 @@ LOCAL_CONFIG = {
     "VERIFY": False,
     "CLIENT_TOKEN": None,
     "ADMIN_TOKEN": None,
-    "ROUNDS": 10,
+    "ROUNDS": 250,
+    "LOCAL_UPDATES": 250,
     "ROUND_TIMEOUT": 7200,  # in seconds
+    "PATIENCE": 10,
+    "MIN_DELTA": 1e-3
 }
 
 REMOTE_CONFIG = {
@@ -24,8 +27,11 @@ REMOTE_CONFIG = {
     "VERIFY": True,
     "CLIENT_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzU4OTgxMzQ0LCJpYXQiOjE3NTYzODkzNDQsImp0aSI6IjA2Mzk4NTI0ZTc1MTQ5YmI5ZDJmZDczMWZkYTNjYzA0IiwidXNlcl9pZCI6MTYxLCJjcmVhdG9yIjoiU2NhbGVvdXRpbnRlcm4iLCJyb2xlIjoiY2xpZW50IiwicHJvamVjdF9zbHVnIjoidGVzdC16eHcifQ.7AszTEa4NWkl7be4OeMpny-AwI3HOlGiUZZ_UqOIJf0",
     "ADMIN_TOKEN": None,
-    "ROUNDS": 10,
+    "ROUNDS": 250,
+    "LOCAL_UPDATES": 250,
     "ROUND_TIMEOUT": 7200,  # in seconds
+    "PATIENCE": 10,
+    "MIN_DELTA": 1e-3
 }
 
 # Choose which environment to use

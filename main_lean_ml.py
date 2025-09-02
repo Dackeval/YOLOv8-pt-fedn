@@ -12,12 +12,13 @@ import time
 from paramiko.proxy import ProxyCommand
 from create_wisard_text_complete import fetch_and_aggregate
 import torch
+from config import settings
 
 exp_name = 'lean_ml_fhl_airfield_lr_0.001-500_exp2'
 root = os.getcwd()
 
 class EarlyStoppingMAP:
-    def __init__(self, patience=5, min_delta=1e-4, verbose=True):
+    def __init__(self, patience=settings["PATIENCE"], min_delta=settings["MIN_DELTA"], verbose=True):
         """
         Args:
             patience (int): Number of epochs to wait for improvement before stopping
@@ -123,7 +124,7 @@ def main():
     val_clients = {}
     val_clients[dataset_path.split("/")[-1]] = Trainer(args, params, data_path=dataset_path)
 
-    early_stopper = EarlyStoppingMAP(patience=5, min_delta=1e-3)
+    early_stopper = EarlyStoppingMAP(patience=settings["PATIENCE"], min_delta=settings["MIN_DELTA"])
 
     for epoch in range(2000):
         print(f"Epoch {epoch + 1}/{2000}")

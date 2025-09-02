@@ -23,7 +23,7 @@ except Exception:
     CFG = {}
 
 class EarlyStoppingMAP:
-    def __init__(self, patience=5, min_delta=1e-4, verbose=True):
+    def __init__(self, patience=settings["PATIENCE"], min_delta=settings["MIN_DELTA"], verbose=True):
         """
         Args:
             patience (int): Number of rounds to wait for improvement before stopping
@@ -101,7 +101,7 @@ class FEDnWrapper:
 
     def __init__(self,trainer):
         self.trainer = trainer
-        self.early_stopper = EarlyStoppingMAP(patience=5, min_delta=1e-3)
+        self.early_stopper = EarlyStoppingMAP(patience=settings["PATIENCE"], min_delta=settings["MIN_DELTA"])
 
     @allure.step("Training the model")
     def train(self, weights, client_settings):
@@ -267,8 +267,8 @@ def main():
     parser.add_argument("--input-size", default=640, type=int)
     parser.add_argument("--batch-size", default=32, type=int)
     parser.add_argument("--local_rank", default=0, type=int)
-    parser.add_argument("--epochs", default=1, type=int)
-    parser.add_argument("--local_updates", default=50, type=int)
+    parser.add_argument("--epochs", default=settings["ROUNDS"], type=int)
+    parser.add_argument("--local_updates", default=settings["LOCAL_UPDATES"], type=int)
     args = parser.parse_args()
 
     data_path = resolve_data_path(params)
