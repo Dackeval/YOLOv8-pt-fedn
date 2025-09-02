@@ -22,6 +22,52 @@ try:
 except Exception:
     CFG = {}
 
+class EarlyStoppingMAP:
+    def __init__(self, patience=5, min_delta=1e-4, verbose=True):
+        """
+        Args:
+            patience (int): Number of rounds to wait for improvement before stopping
+            min_delta (float): Minimum improvement in mAP to count as progress
+            verbose (bool): Print messages when stopping or saving best model
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.verbose = verbose
+        self.best_score = None
+        self.counter = 0
+        self.should_stop = False
+        self.best_state = None  # store model state_dict()
+
+    def __call__(self, current_map, model):
+        if self.best_score is None:
+            self.best_score = current_map
+            self.best_state = model.state_dict()
+            if self.verbose:
+                print(f"Initial best mAP set at {current_map:.4f}")
+        elif current_map < self.best_score + self.min_delta:
+            # No significant improvement
+            self.counter += 1
+            if self.verbose:
+                print(f"No improvement in mAP ({current_map:.4f}), patience {self.counter}/{self.patience}")
+            if self.counter >= self.patience:
+                self.should_stop = True
+                if self.verbose:
+                    print("Early stopping triggered.")
+        else:
+            # Improvement found
+            self.best_score = current_map
+            self.best_state = model.state_dict()
+            self.counter = 0
+            if self.verbose:
+                print(f"New best mAP: {current_map:.4f}")
+
+    def restore_best_weights(self, model):
+        """Restore model to the best saved state"""
+        if self.best_state:
+            model.load_state_dict(self.best_state)
+            if self.verbose:
+                print(f"Restored model to best mAP = {self.best_score:.4f}")
+
 def nbytes(obj) -> int:
     """Return byte size for path/bytes/BytesIO/stream-like objects."""
     if isinstance(obj, (str, os.PathLike)):
@@ -55,6 +101,7 @@ class FEDnWrapper:
 
     def __init__(self,trainer):
         self.trainer = trainer
+        self.early_stopper = EarlyStoppingMAP(patience=5, min_delta=1e-3)
 
     @allure.step("Training the model")
     def train(self, weights, client_settings):
@@ -137,6 +184,18 @@ class FEDnWrapper:
             "val_map50": map50,
             "val_map": mean_ap,
         }
+
+        # Early stopping check
+        self.early_stopper(mean_ap, self.trainer.model)
+        if self.early_stopper.should_stop:
+            print("Early stopping triggered during validation.")
+            allure.attach(
+                f"Early stopping triggered during validation. Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}",
+                name="Early Stopping",
+                attachment_type=allure.attachment_type.TEXT
+            )
+
+
         upd_weights =  [val.cpu().numpy() for _, val in self.trainer.model.state_dict().items()]
         print("new state: ",  np.sum([np.linalg.norm(a) for a in upd_weights]))
 

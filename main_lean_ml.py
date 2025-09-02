@@ -123,7 +123,7 @@ def main():
     val_clients = {}
     val_clients[dataset_path.split("/")[-1]] = Trainer(args, params, data_path=dataset_path)
 
-    early_stopper = EarlyStoppingMAP(patience=10, min_delta=1e-3)
+    early_stopper = EarlyStoppingMAP(patience=5, min_delta=1e-3)
 
     for epoch in range(2000):
         print(f"Epoch {epoch + 1}/{2000}")
