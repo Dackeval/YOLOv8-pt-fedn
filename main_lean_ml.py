@@ -107,7 +107,7 @@ def main():
     parser.add_argument("--batch-size", default=32, type=int)
     parser.add_argument("--local_rank", default=0, type=int)
     parser.add_argument("--epochs", default=1000, type=int)
-    parser.add_argument("--local_updates", default=750, type=int)
+    parser.add_argument("--local_updates", default=settings["LOCAL_UPDATES"]*3, type=int)
     args = parser.parse_args()
     params["lr0"] =0.001
     params["lrf"] =1.0
