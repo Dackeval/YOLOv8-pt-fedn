@@ -1,6 +1,7 @@
 from dataloader import get_concatenated_dataloader
 from trainer import Trainer
 import os
+from datetime import datetime
 import yaml
 import argparse
 import csv
@@ -62,51 +63,42 @@ class EarlyStoppingMAP:
                 print(f"Restored model to best mAP = {self.best_score:.4f}")
 
 
-def log_metrics(round_id, metrics, filename='nono/step.csv'):
+def log_metrics(round_id, metrics, filename='nono/step.csv', early_stop=False):
     """
     Appends metrics to a CSV file. Writes header if file does not exist.
     
     Args:
-        epoch (int): Current epoch number.
+        round_id (int): Current epoch/round number.
         metrics (tuple): (precision, recall, mAP@50, mAP)
         filename (str): Path to the CSV file.
+        early_stop (bool): Whether early stopping was triggered this epoch.
     """
     file_exists = os.path.exists(filename)
     with open(filename, 'a', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=['round', 'precision', 'recall', 'mAP@50', 'mAP'])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=['round', 'precision', 'recall', 'mAP@50', 'mAP', 'timestamp', 'early_stop']
+        )
         if not file_exists:
             writer.writeheader()
+
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
         writer.writerow({
             'round': str(round_id + 1).zfill(3),
             'precision': f'{metrics[0]:.3f}',
             'recall': f'{metrics[1]:.3f}',
             'mAP@50': f'{metrics[2]:.3f}',
-            'mAP': f'{metrics[3]:.3f}'
+            'mAP': f'{metrics[3]:.3f}',
+            'timestamp': timestamp,
+            'early_stop': early_stop
         })
         f.flush()
-
 
 @allure.feature("Model Training")
 @allure.story("Centralized ML Training")
 def main():
-    '''
-    start_test_time = time.perf_counter()
-    allure.attach(
-        f"Test started at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_test_time))}",
-        name="Test start time",
-        attachment_type=allure.attachment_type.TEXT
-    )
-    
-    # Fetch and stream data from Jetsons to local path and log the time taken
-    time_fetch_data = time.perf_counter()
-    fetch_and_aggregate()
-    allure.attach(
-        f"Data fetched in {time.perf_counter() - time_fetch_data:.2f} seconds",
-        name="Data Fetch Time",
-        attachment_type=allure.attachment_type.TEXT
-    )
-    time_process_data = time.perf_counter()
-    '''
+
     with open(os.path.join("utils", "args.yaml"), errors="ignore") as f:
         params = yaml.safe_load(f)
     parser = argparse.ArgumentParser()
@@ -114,7 +106,7 @@ def main():
     parser.add_argument("--batch-size", default=32, type=int)
     parser.add_argument("--local_rank", default=0, type=int)
     parser.add_argument("--epochs", default=1000, type=int)
-    parser.add_argument("--local_updates", default=70, type=int)
+    parser.add_argument("--local_updates", default=750, type=int)
     args = parser.parse_args()
     params["lr0"] =0.001
     params["lrf"] =1.0
@@ -130,18 +122,7 @@ def main():
 
     val_clients = {}
     val_clients[dataset_path.split("/")[-1]] = Trainer(args, params, data_path=dataset_path)
-    ''' 
-    allure.attach(
-        f"Data processing took {time.perf_counter() - time_process_data:.2f} seconds",
-        name="Data Processing Time",
-        attachment_type=allure.attachment_type.TEXT
-    )
-    allure.attach(
-        f"Training started at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.perf_counter()))}",
-        name="Training Start Time",
-        attachment_type=allure.attachment_type.TEXT
-    )
-    '''
+
     early_stopper = EarlyStoppingMAP(patience=10, min_delta=1e-3)
 
     for epoch in range(2000):
@@ -158,11 +139,12 @@ def main():
             val_clients[val_client].model.load_state_dict(trainer.model.state_dict())
             m_pre, m_rec, map50, mean_ap = val_clients[val_client].validate(trainer.model)
             early_stopper(mean_ap, trainer.model)
+            
+            log_metrics(epoch, [m_pre, m_rec, map50, mean_ap], os.path.join(exp_name,name+'_step.csv'),early_stop=early_stopper.should_stop)
 
             if early_stopper.should_stop:
                 print(f"Stopping training at epoch {epoch}")
                 break
-            log_metrics(epoch, [m_pre, m_rec, map50, mean_ap], os.path.join(exp_name,name+'_step.csv'))
 
 
 
