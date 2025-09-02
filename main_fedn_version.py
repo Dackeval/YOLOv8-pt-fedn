@@ -9,6 +9,8 @@ from fedn.utils.helpers.helpers import save_metadata
 import time
 import allure
 import socket
+from types import SimpleNamespace
+
 
 from trainer import Trainer
 from fedn_util import extract_weights_from_model, load_weights_into_model
@@ -185,6 +187,7 @@ def resolve_data_path(params):
     raise ValueError("DATA_PATH not set. Put DATA_PATH in config.py settings, "
                      "or export DATA_PATH, or set params['dataset_path'].")
 
+
 def main():
     start_test_time = time.perf_counter()
     allure.attach(
@@ -206,7 +209,7 @@ def main():
     parser.add_argument("--batch-size", default=32, type=int)
     parser.add_argument("--local_rank", default=0, type=int)
     parser.add_argument("--epochs", default=1, type=int)
-    parser.add_argument("--local_updates", default=250, type=int)
+    parser.add_argument("--local_updates", default=50, type=int)
     args = parser.parse_args()
 
     data_path = resolve_data_path(params)
@@ -221,38 +224,47 @@ def main():
         train_callback=fednwrapper.train, validate_callback=fednwrapper.validate
     )
 
+    BASE_URL = "http://" + settings["DISCOVER_HOST"] + ":8092/"   
 
-    fedn_client.set_name(name)
+    def base(url: str) -> str:
+        url = (url or "").strip().strip('"').strip("'")
+        return url if url.endswith("/") else url + "/"
 
-    client_id = str(uuid.uuid4())
-    #client_id = "214"
-    fedn_client.set_client_id(client_id)
-    print(client_id)
+    url = base(BASE_URL)
+    print("API base:", repr(url))  
+
+    fedn_client.set_name("client")  
+    fedn_client.set_client_id(str(uuid.uuid4()))
+
     controller_config = {
-        "name": name,
-        "client_id": client_id,
+        "name": fedn_client.name,
+        "client_id": fedn_client.client_id,
         "package": "local",
         "preferred_combiner": "",
     }
 
-    result, combiner_config = fedn_client.connect_to_api(
-        "https://" + project_url + "/", client_token, controller_config
+    result, _  = fedn_client.connect_to_api(url=url, token=None, json=controller_config)
+    assert result == ConnectToApiResult.Assigned, f"Not assigned: {result}"
+    
+    combiner_config = SimpleNamespace(
+        host   = settings["DISCOVER_HOST"],        
+        port   = 12080,        
+        status = "assigned",
+        fqdn = "",
+        package = "local",
+        ip = "",
+        helper_type = ""                      
     )
 
-    print("result: ", result)
-    print(combiner_config)
-    if result != ConnectToApiResult.Assigned:
-        print("Failed to connect to API, exiting.")
-        exit(1)
-
-    result: bool = fedn_client.init_grpchandler(
-        config=combiner_config, client_name=name, token=client_token
+    ok = fedn_client.init_grpchandler(
+        config=combiner_config,
+        client_name=fedn_client.name,
+        token=None
     )
-    print("result: ", result)
-    if not result:
-        exit(1)
+    assert ok
 
     fedn_client.run()
+
 
 
 if __name__ == "__main__":

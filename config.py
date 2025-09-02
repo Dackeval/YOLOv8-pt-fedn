@@ -3,9 +3,9 @@ from pathlib import Path
 
 # Environment configurations
 LOCAL_CONFIG = {
-    "DISCOVER_HOST": "127.0.0.1",
+    "DISCOVER_HOST": "100.76.22.82",
     "DISCOVER_PORT": 8092,
-    "DATA_PATH": "/home/nviduser/YOLOv8-pt-fedn/dataset",
+    "DATA_PATH": "/Users/sigvard/Desktop/YOLOv8-pt-fedn/dataset",
     "IS_LOCAL": True,
     "SECURE": False,
     "VERIFY": False,
@@ -29,7 +29,7 @@ REMOTE_CONFIG = {
 }
 
 # Choose which environment to use
-USE_LOCAL = False  # Set to False to use remote environment
+USE_LOCAL = True  # Set to False to use remote environment
 
 # Combine the selected environment config with common settings
 settings = {**(LOCAL_CONFIG if USE_LOCAL else REMOTE_CONFIG)}

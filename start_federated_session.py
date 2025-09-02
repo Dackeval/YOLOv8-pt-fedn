@@ -20,9 +20,9 @@ def main():
             verify=settings["VERIFY"],
         )
     client.set_active_model("seed/seed.npz")
-    trail = client.get_nmodel_trail()
-
-    id = trail[-1]["id"]
+    trail = client.get_model_trail()
+    print(trail)
+    id = trail["model_id"]
     client.start_session(name=args.name, rounds=settings["ROUNDS"], model_id=id, round_timeout=settings["ROUND_TIMEOUT"])
 
 
