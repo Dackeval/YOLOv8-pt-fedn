@@ -11,7 +11,7 @@ LOCAL_CONFIG = {
     "VERIFY": False,
     "CLIENT_TOKEN": None,
     "ADMIN_TOKEN": None,
-    "ROUNDS": 250,
+    "ROUNDS": 100,
     "LOCAL_UPDATES": 250,
     "ROUND_TIMEOUT": 7200,  # in seconds
     "PATIENCE": 10,
