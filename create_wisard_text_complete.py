@@ -27,7 +27,7 @@ ACROSSER = {
 }
 
 JETSONS = [
-    #{"host": "192.168.1.2", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt1"},
+    {"host": "192.168.1.2", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt1"},
     {"host": "192.168.1.3", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt2"},
     {"host": "192.168.1.4", "user": "nviduser", "password": "nVidia64GB", "path": "/home/nviduser/pt3"},
 ]
@@ -37,43 +37,44 @@ def make_dirs():
         os.makedirs(path, exist_ok=True)
 
 def get_pairs():
-    """Find all image/label pairs under DATASETS_PATH recursively."""
-    exts = (".jpg", ".jpeg", ".png")
+    """Collect all (image, text) file pairs from dataset subfolders."""
     pairs = []
-    
-    # Recursively find all images
-    for img_path in glob(os.path.join(LOCAL_PATH, "**", "*"), recursive=True):
-        if img_path.lower().endswith(exts):
-            base, _ = os.path.splitext(img_path)
-            txt_path = base + ".txt"
-            if os.path.exists(txt_path):
-                pairs.append((img_path, txt_path))
+    for root, _, files in os.walk(LOCAL_PATH):
+        for file in files:
+            if file.lower().endswith((".jpg", ".jpeg", ".png")):
+                base = os.path.splitext(file)[0]
+                img_path = os.path.join(root, file)
+                txt_path = os.path.join(root, base + ".txt")
+                if os.path.exists(txt_path):
+                    pairs.append((img_path, txt_path))
     return pairs
 
 def split_pairs():
     pairs = get_pairs()
 
-    split_idx = int(len(pairs) * TRAIN_RATIO)
-    train_pairs = pairs[:split_idx]
-    test_pairs = pairs[split_idx:]
+    # Make sure train/test subfolders exist
+    for folder in [TRAIN_PATH, TEST_PATH]:
+        os.makedirs(os.path.join(folder, "images"), exist_ok=True)
+        os.makedirs(os.path.join(folder, "labels"), exist_ok=True)
 
-    # ✅ Ensure train/test subdirectories exist
-    for subset in ["train", "valid"]:
-        os.makedirs(os.path.join(path_to_datasets, subset, "images"), exist_ok=True)
-        os.makedirs(os.path.join(path_to_datasets, subset, "labels"), exist_ok=True)
+    # Rule-based split
+    train_pairs, test_pairs = [], []
+    for img, txt in pairs:
+        if "SuddenValley" in os.path.basename(img):  # check filename
+            test_pairs.append((img, txt))
+        else:
+            train_pairs.append((img, txt))
 
-    # Copy train pairs
+    # Copy files
     for img, txt in train_pairs:
         shutil.copy2(img, os.path.join(TRAIN_PATH, "images"))
         shutil.copy2(txt, os.path.join(TRAIN_PATH, "labels"))
 
-    # Copy test pairs
     for img, txt in test_pairs:
         shutil.copy2(img, os.path.join(TEST_PATH, "images"))
         shutil.copy2(txt, os.path.join(TEST_PATH, "labels"))
 
-
-    print(f"✅ Split done: {len(train_pairs)} train pairs, {len(test_pairs)} test pairs")
+    print(f"Train: {len(train_pairs)} pairs, Test: {len(test_pairs)} pairs")
 
 def sftp_get_dir(sftp, remote_dir, local_dir, jetson_prefix):
     """Recursively fetch a directory via SFTP and aggregate into one folder."""
@@ -159,5 +160,3 @@ def run():
             f.write(os.path.abspath(path) + "\n")
 
     print(f"Saved {len(image_paths)} image paths to {output_txt}")
-
-run()
