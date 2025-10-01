@@ -1,4 +1,4 @@
-import os
+import os, random
 import time
 
 import numpy as np
@@ -24,11 +24,45 @@ class PersistentDataLoader:
                 self.iterator = iter(self.dataloader)
                 return next(self.iterator)
 
+def set_global_seed(seed: int, deterministic_kernels: bool = True):
+    # Python & NumPy
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+
+    # PyTorch CPU/CUDA
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # cuDNN / kernel determinism
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+    if deterministic_kernels:
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":16:8")
+        try:
+            torch.use_deterministic_algorithms(True)
+        except Exception as e:
+            print(f"Warning: deterministic algorithms not enforced: {e}")
+
+def seed_worker(worker_id: int):
+    # Torch gives each worker an initial seed; use it to seed numpy/python
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 class Trainer:
     def __init__(self, args, params, data_path=None, validation_mode=True, trainer_mode=True):
         self.args = args
         self.params = params
+
+        # --- Determinism ---
+        if not hasattr(self.args, "seed"):
+            self.args.seed = 42  # default
+        set_global_seed(self.args.seed, deterministic_kernels=True)
+        # single RNG passed to DataLoader/Sampler to make shuffling reproducible
+        self._dl_generator = torch.Generator(device="cpu").manual_seed(self.args.seed)
+
 
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
@@ -51,12 +85,31 @@ class Trainer:
             self.optimizer = self.configure_optimizer()
             self.scheduler = self.configure_scheduler()
             self.train_iter = None
-            self.train_loader = PersistentDataLoader(get_dataloader(data_path, "train", args, params))
+            self.train_loader = PersistentDataLoader(
+                get_dataloader(
+                    data_path,
+                    "train",
+                    self.args,
+                    self.params,
+                    worker_init_fn=seed_worker,     
+                    generator=self._dl_generator,
+                    shuffle=True
+                    )
+                )            
             self.usage_counter = np.zeros(len(self.train_loader.dataloader.dataset), dtype=int)
             self.prev_iterations = 0
             self.round_index = 0
         if validation_mode:
-            self.val_loader = get_dataloader(data_path, "valid", args, params, num_workers=8)
+            self.val_loader = get_dataloader(
+                data_path,
+                "valid",
+                self.args,
+                self.params,
+                num_workers=8,
+                worker_init_fn=seed_worker,          
+                generator=self._dl_generator,
+                shuffle=False
+            )
 
         
 

@@ -5,12 +5,11 @@ import torch
 
 pin = torch.cuda.is_available() 
 
-def get_dataloader(client_name, set_, args, params,num_workers=8):
+def get_dataloader(client_name, set_, args, params,num_workers=8, *, worker_init_fn=None, generator=None, shuffle=True):
     filenames = []
     with open(os.path.join(client_name, set_+".txt")) as reader:
         for filename in reader.readlines():
             filenames.append(filename[:-1])
-
 
     dataset = Dataset(filenames, args.input_size, params, set_== "train")
     
@@ -19,14 +18,22 @@ def get_dataloader(client_name, set_, args, params,num_workers=8):
     else:
         batch_size = 1
 
-    loader = data.DataLoader(dataset, batch_size=batch_size,
-                             num_workers=num_workers, pin_memory=True, collate_fn=Dataset.collate_fn,
-                             persistent_workers=True if num_workers > 0 else False, shuffle=True)
+    loader = data.DataLoader(
+        dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=pin,
+        collate_fn=Dataset.collate_fn,
+        persistent_workers=True if num_workers > 0 else False,
+        shuffle=shuffle,                 
+        worker_init_fn=worker_init_fn,  
+        generator=generator             
+    )
     
     return loader
 
 
-def get_concatenated_dataloader(dataset_path, set_, args, params,num_workers=8):
+def get_concatenated_dataloader(dataset_path, set_, args, params,num_workers=8, *, worker_init_fn=None, generator=None, shuffle=True):
 
     filenames = []
     with open(os.path.join(dataset_path, set_+".txt")) as reader:
@@ -46,6 +53,6 @@ def get_concatenated_dataloader(dataset_path, set_, args, params,num_workers=8):
 
     loader = data.DataLoader(dataset, batch_size=batch_size,
                              num_workers=num_workers, pin_memory=pin, collate_fn=Dataset.collate_fn,
-                             persistent_workers=True if num_workers > 0 else False, shuffle=True)
+                             persistent_workers=True if num_workers > 0 else False, shuffle=shuffle, worker_init_fn=worker_init_fn, generator=generator)
     
     return loader
